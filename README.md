@@ -8,11 +8,11 @@ To get the best results, follow the [standard plex naming convention for movies]
 Features
 ============
 Currently the features of this metadata agent are:
-* Grabs Metadata
+- Grabs Metadata
 - Title
 - Studio
 - Release Data
-- Porn Stars stored in Actors
+- Porn Stars stored in Actors with photo
 - Categories stored as Genres
 - DVD/Movie cover stored as Movie Poster
 - Video Preview stored as video background
