@@ -1,0 +1,182 @@
+
+        # Summary
+        paragraph = detailsPageElements.xpath('//p[@itemprop="description"]')[0].text_content()
+        paragraph = paragraph.replace('&13;', '').strip(' \t\n\r"').replace('\n','').replace('  ','') + "\n\n"
+        metadata.summary = paragraph[:-10]
+        tagline = detailsPageElements.xpath('//span[@class="label-text"]')[0].text_content()
+        if tagline == 'ZZ Series':
+            zzseries = False
+        metadata.tagline = str(tagline)
+        metadata.collections.add(tagline)
+        metadata.title = detailsPageElements.xpath('//h1')[0].text_content()
+
+        # Genres
+        metadata.genres.clear()
+        genres = detailsPageElements.xpath('//div[contains(@class,"tag-card-container")]//a')
+        genreFilter=[]
+        if Prefs["excludegenre"] is not None:
+            Log("exclude")
+            genreFilter = Prefs["excludegenre"].split(';')
+
+        genreMaps=[]
+        genreMapsDict = {}
+
+        if Prefs["tagmapping"] is not None:
+            genreMaps = Prefs["tagmapping"].split(';')
+            for mapping in genreMaps:
+                keyVal = mapping.split("=")
+                genreMapsDict[keyVal[0]] = keyVal[1].lower()
+        else:
+            genreMapsDict = None
+
+        if len(genres) > 0:
+            for genreLink in genres:
+                genreName = genreLink.text_content().strip('\n').lower()
+                if any(genreName in g for g in genreFilter) == False:
+                    if genreMapsDict is not None:
+                        if genreName in genreMapsDict:
+                            if not tagAleadyExists(genreMapsDict[genreName],metadata):
+                                metadata.genres.add(capitalize(genreMapsDict[genreName]))
+                        else:
+                            if not tagAleadyExists(genreName,metadata):
+                                metadata.genres.add(capitalize(genreName))
+                    else:
+                        metadata.genres.add(capitalize(genreName))
+
+        if not zzseries:
+            date = detailsPageElements.xpath('//aside[contains(@class,"scene-date")]')[0].text_content()
+            date_object = datetime.strptime(date, '%B %d, %Y')
+            metadata.originally_available_at = date_object
+            metadata.year = metadata.originally_available_at.year
+        else:
+            for wrapper in detailsPageElements.xpath('//div[@class="release-card-wrap"]'):
+                Log('wrapper')
+                cardTitle = wrapper.xpath('.//div[@class="card-image"]//a')[0].get('title')
+                Log(cardTitle)
+                if cardTitle.lower() == metadata.title.lower():
+                    Log('match')
+                    date = detailsPageElements.xpath('..//time')[0].text_content()
+                    date_object = datetime.strptime(date, '%B %d, %Y')
+                    metadata.originally_available_at = date_object
+                    metadata.year = metadata.originally_available_at.year 
+                    metadata.roles.clear()
+                    metadata.collections.clear()
+                    starring = wrapper.xpath('.//div[@class="model-names"]//a')
+                    for member in starring:
+                        role = metadata.roles.new()
+                        role.actor = member.get('title').strip()
+                        metadata.collections.add(member.get('title').strip())
+                    p = wrapper.xpath('.//div[@class="card-image"]//img')[0].get('src')
+                    Log(p)
+                    metadata.posters[p] = Proxy.Preview(HTTP.Request(p, headers={'Referer': 'http://www.google.com'}).content, sort_order = 1)
+                        
+        # Starring/Collection
+        # Create a string array to hold actors
+        maleActors=[]
+        
+        # Refresh the cache every 50th query
+        if('cache_count' not in Dict):
+            Dict['cache_count'] = 0
+            Dict.Save()
+        else:
+            cache_count = float(Dict['cache_count'])
+            if(cache_count == 50):
+                Log(str(cache_count))
+                Dict.Reset()
+            else:
+                Dict['cache_count'] = str(cache_count + 1)
+                Dict.Save()
+                Log(str(cache_count))
+          
+        if('actors' not in Dict):
+            Log('******NOT IN DICT******')
+            maleActorHtml = None
+            #maleActorHtml = HTML.ElementFromURL('http://www.data18.com/sys/get3.php?t=2&network=1&request=/sites/brazzers/')
+
+            # Add missing actors
+#            for actor in maleActorHtml.xpath('//option'):
+#                itemString = actor.text_content()
+#                actorArray = itemString.split("(")
+#                try:
+                    # Add item to array
+#                    actor = actorArray[0].strip()
+#                    maleActors.append(actor)
+#                except: pass
+#            Dict['actors'] = maleActors
+            Dict.Save()
+        else:
+            Log('******IN DICT******')
+            maleActors = Dict['actors']
+
+        if Prefs['excludeactor'] is not None:
+            addActors = Prefs['excludeactor'].split(';')
+            for a in addActors:
+                maleActors.append(a)
+      
+        #starring = None
+        if not zzseries:
+            metadata.roles.clear()
+            #metadata.collections.clear()
+            #starring = detailsPageElements.xpath('//p[contains(@class,"related-model")]//a')
+            starring = detailsPageElements.xpath('//div[@class="model-card"]//a')
+            memberSceneActorPhotos = detailsPageElements.xpath('//img[contains(@class,"lazy card-main-img")]')
+            memberSceneActorPhotos_TotalNum = len(memberSceneActorPhotos)
+            memberTotalNum = len(starring)/2
+            Log('----- Number of Actors: ' +str(memberTotalNum) + ' ------')
+            Log('----- Number of Photos: ' +str(memberSceneActorPhotos_TotalNum) + ' ------')
+            
+            memberNum = 0
+            for memberCard in starring:
+                # Check if member exists in the maleActors list as either a string or substring
+                #if any(member.text_content().strip() in m for m in maleActors) == False:
+                    role = metadata.roles.new()
+                    # Add to actor and collection
+                    #role.name = "Test"
+                    role.role = "Porn Star"
+                    memberName = memberCard.xpath('//h2[contains(@class,"model-card-title")]//a')[memberNum]
+                    memberPhoto = memberCard.xpath('//img[@class="lazy card-main-img" and @alt="'+memberName.text_content().strip()+'"]')[0].get('data-src')
+                    role.name = memberName.text_content().strip()
+                    memberNum = memberNum + 1
+                    memberNum = memberNum % memberTotalNum
+                    Log('--------- Photo   ---------- : ' + memberPhoto)
+                    role.photo = "http:" + memberPhoto.replace("model-medium.jpg","model-small.jpg")
+                    metadata.collections.add(memberName.text_content().strip())
+
+            detailsPageElements.xpath('//h1')[0].text_content()
+
+
+        #Rating
+        #try:
+            #likes = detailsPageElements.xpath('//span[@class="like"]')[0].text_content().strip()
+            #dislikes = detailsPageElements.xpath('//span[@class="dislike"]')[0].text_content().strip()
+            #if(likes != 0 and dislikes != 0):
+                #total = float(likes) + float(dislikes)
+                #rating = float(likes) / total * 10
+                #metadata.rating = rating
+        #except:pass
+
+        #Posters
+        if not zzseries:
+            i = 1
+            background = "http:" + detailsPageElements.xpath('//*[@id="trailer-player"]/img')[0].get('src')
+            Log("BG DL: " + background)
+            metadata.art[background] = Proxy.Preview(HTTP.Request(background, headers={'Referer': 'http://www.google.com'}).content, sort_order = 1)
+            for poster in detailsPageElements.xpath('//a[@rel="preview"]'):
+                posterUrl = "http:" + poster.get('href').strip()
+                thumbUrl = "http:" + detailsPageElements.xpath('//img[contains(@data-src,"thm")]')[i-1].get('data-src')
+                if not posterAlreadyExists(posterUrl,metadata):            
+                    #Download image file for analysis
+                    img_file = urllib.urlopen(posterUrl)
+                    im = StringIO(img_file.read())
+                    resized_image = Image.open(im)
+                    width, height = resized_image.size
+                    #posterUrl = posterUrl[:-6] + "01.jpg"
+                    #Add the image proxy items to the collection
+                    if(width > 1):
+                        # Item is a poster
+                        
+                        metadata.posters[posterUrl] = Proxy.Preview(HTTP.Request(posterUrl, headers={'Referer': 'http://www.google.com'}).content, sort_order = i)
+                    if(width > 100):
+                        # Item is an art item
+                        metadata.art[posterUrl] = Proxy.Preview(HTTP.Request(posterUrl, headers={'Referer': 'http://www.google.com'}).content, sort_order = i+1)
+                    i = i + 1
