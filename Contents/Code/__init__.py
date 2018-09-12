@@ -43,7 +43,7 @@ def posterAlreadyExists(posterUrl,metadata):
             return True
     return False
 
-class EXCAgent(Agent.Movies):
+class Data18PhoenixAgent(Agent.Movies):
     name = 'Data18-Phoenix'
     languages = [Locale.Language.English]
     accepts_from = ['com.plexapp.agents.localmedia']
