@@ -65,27 +65,49 @@ class Data18PhoenixAgent(Agent.Movies):
         encodedTitle = urllib.quote(title)
         Log(encodedTitle)
         searchResults = HTML.ElementFromURL('https://data18.empirestores.co/Search?q=' + encodedTitle)
-
-        for searchResult in searchResults.xpath('//div[@class=" col-xs-6 col-sm-4 col-md-3 grid-item"]//a'):
-
-            Log(searchResult.text_content())
-            titleNoFormatting = searchResult.get("data-original-title")
-            curID = searchResult.get("href")
+        isSingleMatch = False
+        try:
+            singleMatch = searchResults.xpath('//meta[@http-equiv="refresh"]')
+            if len(singleMatch) > 0:
+                isSingleMatch = True
+                Log("Search yields single result & redirects")
+        except:
+            pass
+        if isSingleMatch:
+            singleMatchURL = singleMatch[0].get("content")[7:]
+            url = 'https://data18.empirestores.co/' + singleMatchURL
+            detailsPageElements = HTML.ElementFromURL(url)
+            titleNoFormatting = detailsPageElements.xpath('//h1[@class="hidden-md hidden-lg hidden-xl"]')[0].text_content()[6:-11]
+            curID = singleMatchURL
             curID = curID.replace('/','_')
-            popOverID = searchResult.get("data-target")
-            popOver = searchResults.xpath('//div[@id="'+ popOverID +'"]')[0]
-            popOverContents = popOver.text_content()
-            releasedPos = popOverContents.find("Released")
-            releasedDate = popOverContents[releasedPos+9:releasedPos+19]
-            runtimePos = popOverContents.find("Runtime")
-            runtimePosEnd = popOverContents.find(" mins.")
-            runtimeAmount = popOverContents[runtimePos+7:runtimePosEnd]    
+
+            releasedDate = detailsPageElements.xpath('//ul[@class="list-unstyled product-details spacing-bottom"]//li')[1].text_content()[18:30]
             Log(str(curID))
             lowerResultTitle = str(titleNoFormatting).lower()
             score = 100 - Util.LevenshteinDistance(title.lower(), titleNoFormatting.lower()) - Util.LevenshteinDistance(year, releasedDate[6:])
-            titleNoFormatting = titleNoFormatting + " [" + releasedDate + ", " + runtimeAmount + " mins]"
+            titleNoFormatting = titleNoFormatting + " [" + releasedDate + "]"
             results.Append(MetadataSearchResult(id = curID, name = titleNoFormatting, score = score, lang = lang))
-                
+        else:
+            for searchResult in searchResults.xpath('//div[@class=" col-xs-6 col-sm-4 col-md-3 grid-item"]//a'):
+
+                Log(searchResult.text_content())
+                titleNoFormatting = searchResult.get("data-original-title")
+                curID = searchResult.get("href")
+                curID = curID.replace('/','_')
+                popOverID = searchResult.get("data-target")
+                popOver = searchResults.xpath('//div[@id="'+ popOverID +'"]')[0]
+                popOverContents = popOver.text_content()
+                releasedPos = popOverContents.find("Released")
+                releasedDate = popOverContents[releasedPos+9:releasedPos+19]
+                runtimePos = popOverContents.find("Runtime")
+                runtimePosEnd = popOverContents.find(" mins.")
+                runtimeAmount = popOverContents[runtimePos+7:runtimePosEnd]    
+                Log(str(curID))
+                lowerResultTitle = str(titleNoFormatting).lower()
+                score = 100 - Util.LevenshteinDistance(title.lower(), titleNoFormatting.lower()) - Util.LevenshteinDistance(year, releasedDate[6:])
+                titleNoFormatting = titleNoFormatting + " [" + releasedDate + ", " + runtimeAmount + " mins]"
+                results.Append(MetadataSearchResult(id = curID, name = titleNoFormatting, score = score, lang = lang))
+                    
         results.Sort('score', descending=True)            
 
     def update(self, metadata, media, lang):
@@ -140,9 +162,14 @@ class Data18PhoenixAgent(Agent.Movies):
 
         # Posters/Background
         posterURL = detailsPageElements.xpath('//div[@id="Boxcover"]//a//img')[0].get("src")
-        background = detailsPageElements.xpath('//div[@id="previewContainer"]')[0].get("style")[21:-2]
+        try:
+            background = detailsPageElements.xpath('//div[@id="previewContainer"]')[0].get("style")[21:-2]
+            metadata.art[background] = Proxy.Preview(HTTP.Request(background, headers={'Referer': 'http://www.google.com'}).content, sort_order = 1)
+            Log("BackgroundURL: " + background)
+        except: 
+            pass
         Log("PosterURL: " + posterURL)
-        Log("BackgroundURL: " + background)
-        metadata.art[background] = Proxy.Preview(HTTP.Request(background, headers={'Referer': 'http://www.google.com'}).content, sort_order = 1)
+        
+        
         metadata.posters[posterURL] = Proxy.Preview(HTTP.Request(posterURL, headers={'Referer': 'http://www.google.com'}).content, sort_order = 1)
                 
